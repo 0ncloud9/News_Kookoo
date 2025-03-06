@@ -1,16 +1,31 @@
-const API_KEY = "44d1f7d75abf4dd58567b52a86184ac9";
+import { store } from "./store.js";
 
-let page = 1;
+const API_KEY = "44d1f7d75abf4dd58567b52a86184ac9";
 const limit = 5;
 
-async function fetchNews() {
+// getCategory 함수를 NewsList 함수 외부로 이동
+function getCategory(category) {
+  if (category === "all") return "";
+  return `&category=${category}`;
+}
+
+async function getNews() {
   try {
-    const url = `https://newsapi.org/v2/everything?q=technology&pageSize=${limit}&page=${page}&apiKey=${API_KEY}`;
+    const state = store.getState();
+    const { category, page } = state;
+
+    const categoryQuery = getCategory(category);
+    const baseUrl =
+      category === "all"
+        ? `https://newsapi.org/v2/everything?q=news`
+        : `https://newsapi.org/v2/top-headlines?&category=${category}`;
+
+    const url = `${baseUrl}&pageSize=${limit}&page=${page}&apiKey=${API_KEY}`;
     const response = await axios.get(url);
 
     return response.data.articles;
   } catch (err) {
-    console.error("Error fetching news:", err);
+    console.error("Error Loading News:", err);
     return [];
   }
 }
@@ -66,11 +81,14 @@ export default function NewsList() {
   }
 
   // 뉴스 표시
-  async function displayNews() {
+  async function displayNews(shouldClear = false) {
     try {
+      store.setState("loading", true);
       loadingIndicator.style.display = "flex";
 
-      const articles = await fetchNews();
+      if (shouldClear) newsList.innerHTML = ``;
+
+      const articles = await getNews();
 
       if (articles && articles.length > 0) {
         articles.forEach((article) => {
@@ -88,6 +106,7 @@ export default function NewsList() {
     } finally {
       setTimeout(() => {
         loadingIndicator.style.display = "none";
+        store.setState("loading", false);
       }, 1000);
     }
   }
@@ -95,9 +114,10 @@ export default function NewsList() {
   // 인터섹션 옵저버 콜백 함수
   const observerCallback = (entries, observer) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        page++;
-        displayNews();
+      if (entry.isIntersecting && !store.getState().loading) {
+        const currentPage = store.getState().page;
+        store.setState("page", currentPage + 1);
+        displayNews(false);
       }
     });
   };
@@ -115,6 +135,10 @@ export default function NewsList() {
 
   const observer = new IntersectionObserver(observerCallback, observerOptions);
   observer.observe(sentinel);
+
+  const unsubscribe = store.subscribe(({ property, value }) => {
+    if (property === "category") displayNews(true);
+  });
 
   // 초기 뉴스 로드
   displayNews();
